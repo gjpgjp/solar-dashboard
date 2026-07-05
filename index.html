@@ -98,6 +98,7 @@
 
   /* ---- charts ---- */
   .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 22px; }
+  .grid-2.solo { grid-template-columns: 1fr; }
   @media (max-width: 820px) { .grid-2 { grid-template-columns: 1fr; } }
   .card { padding: 20px 22px; }
   .card h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
@@ -159,30 +160,31 @@
 
   <div id="dash" class="hidden">
     <div class="filters glass">
+      <div class="chip-row"><span class="chip-label">Array</span><span id="arrayChips"></span></div>
       <div class="chip-row"><span class="chip-label">Year</span><span id="yearChips"></span></div>
       <div class="chip-row"><span class="chip-label">Month</span><span id="monthChips"></span></div>
     </div>
 
     <div class="kpis">
       <div class="kpi glass gen"><div class="k-label">Generated</div><div class="k-value" id="kGen"></div><div class="k-sub" id="kGenSub"></div></div>
-      <div class="kpi glass exp"><div class="k-label">Exported</div><div class="k-value" id="kExp"></div><div class="k-sub" id="kExpSub"></div></div>
-      <div class="kpi glass imp"><div class="k-label">Imported</div><div class="k-value" id="kImp"></div><div class="k-sub" id="kImpSub"></div></div>
-      <div class="kpi glass self"><div class="k-label">Self-consumed</div><div class="k-value" id="kSelf"></div><div class="k-sub" id="kSelfSub"></div></div>
+      <div class="kpi glass exp" id="kExpCard"><div class="k-label">Exported</div><div class="k-value" id="kExp"></div><div class="k-sub" id="kExpSub"></div></div>
+      <div class="kpi glass imp" id="kImpCard"><div class="k-label">Imported</div><div class="k-value" id="kImp"></div><div class="k-sub" id="kImpSub"></div></div>
+      <div class="kpi glass self" id="kSelfCard"><div class="k-label">Self-consumed</div><div class="k-value" id="kSelf"></div><div class="k-sub" id="kSelfSub"></div></div>
     </div>
 
     <div class="records">
       <div class="rec glass"><div class="medal">🌞</div><div><div class="r-label">Best generation day</div><div class="r-value" id="recGen"></div><div class="r-date" id="recGenDate"></div></div></div>
-      <div class="rec glass"><div class="medal">⚡</div><div><div class="r-label">Best export day</div><div class="r-value" id="recExp"></div><div class="r-date" id="recExpDate"></div></div></div>
-      <div class="rec glass"><div class="medal">🔌</div><div><div class="r-label">Highest import day</div><div class="r-value" id="recImp"></div><div class="r-date" id="recImpDate"></div></div></div>
+      <div class="rec glass" id="recExpCard"><div class="medal">⚡</div><div><div class="r-label">Best export day</div><div class="r-value" id="recExp"></div><div class="r-date" id="recExpDate"></div></div></div>
+      <div class="rec glass" id="recImpCard"><div class="medal">🔌</div><div><div class="r-label">Highest import day</div><div class="r-value" id="recImp"></div><div class="r-date" id="recImpDate"></div></div></div>
     </div>
 
-    <div class="grid-2">
+    <div class="grid-2" id="chartsGrid">
       <div class="card glass">
         <h2 id="mainTitle">Energy over time</h2>
         <div class="hint" id="mainHint"></div>
         <div class="chart-box tall"><canvas id="mainChart"></canvas></div>
       </div>
-      <div class="card glass">
+      <div class="card glass" id="donutCard">
         <h2>Where the generation went</h2>
         <div class="hint">Self-consumed vs exported</div>
         <div class="chart-box tall"><canvas id="donutChart"></canvas></div>
@@ -191,7 +193,7 @@
 
     <div class="card glass" style="margin-bottom:22px;">
       <h2>Year-on-year generation</h2>
-      <div class="hint">Monthly totals, every year compared</div>
+      <div class="hint" id="yoyHint">Monthly totals, every year compared</div>
       <div class="chart-box short"><canvas id="yoyChart"></canvas></div>
     </div>
 
@@ -201,18 +203,23 @@
 
 <script>
 /* ================= CONFIG — edit these ================= */
-const SHEET_ID = "1cJfgEgDrNxrOpk8IaqocZpz-hOiIjHi7bygnT1arcVQ";
+var SHEET_ID = "1cJfgEgDrNxrOpk8IaqocZpz-hOiIjHi7bygnT1arcVQ";
+var SOURCES = [
+  { key: "main", label: "Main Solar", urls: [
+      "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv",
+      "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/export?format=csv"
+  ]},
+  { key: "garage", label: "Garage Solar", urls: [
+      "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&sheet=garage"
+  ]}
+];
 /* ======================================================== */
 
-const CSV_URLS = [
-  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`,
-  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`
-];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const kwh = v => v.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 
-let rows = [];          // { date: Date, key: "YYYY-MM-DD", gen, exp, imp }
-let selYear = "all", selMonth = "all";
+let rows = [];          // { date, key: "YYYY-MM-DD", gen, exp, imp, src }
+let selYear = "all", selMonth = "all", selArray = "all";
 let mainChart, donutChart, yoyChart;
 
 /* ---------- CSV parsing (handles quoted fields) ---------- */
@@ -244,7 +251,7 @@ function parseDate(s) {
 const dkey = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 const fmtDate = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
-function ingest(csvText) {
+function ingest(csvText, src) {
   const table = parseCSV(csvText);
   const byDay = new Map();               // later rows overwrite earlier (same-day re-logs)
   for (const r of table) {
@@ -252,15 +259,26 @@ function ingest(csvText) {
     if (!d) continue;                     // skips header + summary rows
     const gen = parseFloat(r[0]), exp = parseFloat(r[2]), imp = parseFloat(r[3]);
     if (isNaN(gen) && isNaN(exp) && isNaN(imp)) continue;
-    byDay.set(dkey(d), { date: d, key: dkey(d), gen: gen || 0, exp: exp || 0, imp: imp || 0 });
+    byDay.set(dkey(d), { date: d, key: dkey(d), gen: gen || 0, exp: exp || 0, imp: imp || 0, src: src });
   }
-  rows = [...byDay.values()].sort((a, b) => a.date - b.date);
+  return [...byDay.values()];
 }
 
 /* ---------- filtering + aggregation ---------- */
-const filtered = () => rows.filter(r =>
+const bySrc = () => rows.filter(r => selArray === "all" || r.src === selArray);
+const filtered = () => bySrc().filter(r =>
   (selYear === "all" || r.date.getFullYear() === +selYear) &&
   (selMonth === "all" || r.date.getMonth() === +selMonth));
+
+/* combine per calendar day (sums both arrays when "All" is selected) */
+function viewData() {
+  const m = new Map();
+  for (const r of filtered()) {
+    const o = m.get(r.key) || { date: r.date, key: r.key, gen: 0, exp: 0, imp: 0 };
+    o.gen += r.gen; o.exp += r.exp; o.imp += r.imp; m.set(r.key, o);
+  }
+  return [...m.values()].sort((a, b) => a.date - b.date);
+}
 
 function aggMonthly(data) {
   const m = new Map();
@@ -274,19 +292,29 @@ function aggMonthly(data) {
 
 /* ---------- UI: filter chips ---------- */
 function buildChips() {
-  const years = [...new Set(rows.map(r => r.date.getFullYear()))].sort();
+  const years = [...new Set(bySrc().map(r => r.date.getFullYear()))].sort();
+  const ac = document.getElementById("arrayChips");
   const yc = document.getElementById("yearChips"), mc = document.getElementById("monthChips");
+  ac.innerHTML = chip("all", "All", selArray) + SOURCES.map(s => chip(s.key, s.label, selArray)).join("");
   yc.innerHTML = chip("all", "All", selYear) + years.map(y => chip(y, y, selYear)).join("");
   mc.innerHTML = chip("all", "All", selMonth) + MONTHS.map((m, i) => chip(i, m, selMonth)).join("");
+  ac.querySelectorAll(".chip").forEach(b => b.onclick = () => { selArray = b.dataset.v; render(); });
   yc.querySelectorAll(".chip").forEach(b => b.onclick = () => { selYear = b.dataset.v; render(); });
   mc.querySelectorAll(".chip").forEach(b => b.onclick = () => { selMonth = b.dataset.v; render(); });
 }
-const chip = (v, label, sel) => `<button class="chip${String(v) === String(sel) ? " active" : ""}" data-v="${v}">${label}</button>`;
+const chip = (v, label, sel) => '<button class="chip' + (String(v) === String(sel) ? " active" : "") + '" data-v="' + v + '">' + label + "</button>";
 
 /* ---------- render ---------- */
 function render() {
   buildChips();
-  const data = filtered();
+  const data = viewData();
+  const garageOnly = selArray === "garage";
+
+  /* garage array only generates — hide export/import elements */
+  ["kExpCard", "kImpCard", "kSelfCard", "recExpCard", "recImpCard", "donutCard"].forEach(id =>
+    document.getElementById(id).classList.toggle("hidden", garageOnly));
+  document.getElementById("chartsGrid").classList.toggle("solo", garageOnly);
+
   const t = data.reduce((a, r) => ({ gen: a.gen + r.gen, exp: a.exp + r.exp, imp: a.imp + r.imp }),
     { gen: 0, exp: 0, imp: 0 });
   const days = data.length || 1;
@@ -301,11 +329,14 @@ function render() {
   setRec(data, "exp", "recExp", "recExpDate");
   setRec(data, "imp", "recImp", "recImpDate");
 
-  drawMain(data);
-  drawDonut(self, t.exp);
+  drawMain(data, garageOnly);
+  if (!garageOnly) drawDonut(self, t.exp);
   drawYoY();
-  document.getElementById("foot").textContent =
-    `${data.length} days shown · ${rows.length} days logged since ${fmtDate(rows[0].date)}`;
+
+  const arr = bySrc();
+  document.getElementById("foot").textContent = arr.length
+    ? data.length + " days shown · logged since " + fmtDate(arr[0].date)
+    : "No data yet for this selection";
 }
 function setK(id, v, unit) { document.getElementById(id).innerHTML = kwh(v) + "<small>" + unit + "</small>"; }
 function setSub(id, s) { document.getElementById(id).textContent = s; }
@@ -327,7 +358,7 @@ const baseOpts = {
     legend: { labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 7, padding: 16 } },
     tooltip: { backgroundColor: "rgba(15,20,38,0.92)", borderColor: "rgba(255,255,255,0.15)",
       borderWidth: 1, padding: 12, cornerRadius: 12,
-      callbacks: { label: c => ` ${c.dataset.label}: ${(+c.parsed.y).toFixed(1)} kWh` } }
+      callbacks: { label: c => " " + c.dataset.label + ": " + (+c.parsed.y).toFixed(1) + " kWh" } }
   },
   scales: {
     x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 14 } },
@@ -335,7 +366,7 @@ const baseOpts = {
   }
 };
 
-function drawMain(data) {
+function drawMain(data, garageOnly) {
   const daily = selYear !== "all" && selMonth !== "all";
   let labels, gen, exp, imp;
   if (daily) {
@@ -347,23 +378,23 @@ function drawMain(data) {
     const m = aggMonthly(data);
     labels = m.map(o => o.label);
     gen = m.map(o => o.gen); exp = m.map(o => o.exp); imp = m.map(o => o.imp);
-    document.getElementById("mainTitle").textContent = "Monthly energy";
+    document.getElementById("mainTitle").textContent = garageOnly ? "Monthly generation" : "Monthly energy";
     document.getElementById("mainHint").textContent = "kWh per month" +
       (selMonth !== "all" ? " — " + MONTHS[+selMonth] + " across all years" : "");
   }
+  const datasets = [
+    { type: "bar", label: "Generated", data: gen, backgroundColor: "rgba(255,181,71,0.75)",
+      borderRadius: 6, borderSkipped: false }
+  ];
+  if (!garageOnly) {
+    datasets.push({ type: "line", label: "Exported", data: exp, borderColor: "#4ade9e",
+      backgroundColor: "#4ade9e", tension: 0.35, pointRadius: daily ? 0 : 2, borderWidth: 2 });
+    datasets.push({ type: "line", label: "Imported", data: imp, borderColor: "#f97583",
+      backgroundColor: "#f97583", tension: 0.35, pointRadius: daily ? 0 : 2, borderWidth: 2 });
+  }
   mainChart && mainChart.destroy();
   mainChart = new Chart(document.getElementById("mainChart"), {
-    data: {
-      labels,
-      datasets: [
-        { type: "bar", label: "Generated", data: gen, backgroundColor: "rgba(255,181,71,0.75)",
-          borderRadius: 6, borderSkipped: false },
-        { type: "line", label: "Exported", data: exp, borderColor: "#4ade9e",
-          backgroundColor: "#4ade9e", tension: 0.35, pointRadius: daily ? 0 : 2, borderWidth: 2 },
-        { type: "line", label: "Imported", data: imp, borderColor: "#f97583",
-          backgroundColor: "#f97583", tension: 0.35, pointRadius: daily ? 0 : 2, borderWidth: 2 }
-      ]
-    },
+    data: { labels: labels, datasets: datasets },
     options: baseOpts
   });
 }
@@ -384,25 +415,26 @@ function drawDonut(self, exp) {
         legend: { position: "bottom", labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 7, padding: 16 } },
         tooltip: { backgroundColor: "rgba(15,20,38,0.92)", borderColor: "rgba(255,255,255,0.15)",
           borderWidth: 1, padding: 12, cornerRadius: 12,
-          callbacks: { label: c => ` ${c.label}: ${kwh(c.parsed)} kWh` } }
+          callbacks: { label: c => " " + c.label + ": " + kwh(c.parsed) + " kWh" } }
       }
     }
   });
 }
 
 function drawYoY() {
-  const years = [...new Set(rows.map(r => r.date.getFullYear()))].sort();
+  const src = bySrc();
+  const years = [...new Set(src.map(r => r.date.getFullYear()))].sort();
   const palette = ["#7aa5ff", "#4ade9e", "#ffb547", "#f97583", "#c9b8ff", "#5eead4"];
   const datasets = years.map((y, i) => {
     const totals = Array(12).fill(0);
-    rows.forEach(r => { if (r.date.getFullYear() === y) totals[r.date.getMonth()] += r.gen; });
+    src.forEach(r => { if (r.date.getFullYear() === y) totals[r.date.getMonth()] += r.gen; });
     return { label: String(y), data: totals.map(v => v || null),
       backgroundColor: palette[i % palette.length] + "cc", borderRadius: 5, borderSkipped: false };
   });
   yoyChart && yoyChart.destroy();
   yoyChart = new Chart(document.getElementById("yoyChart"), {
     type: "bar",
-    data: { labels: MONTHS, datasets },
+    data: { labels: MONTHS, datasets: datasets },
     options: baseOpts
   });
 }
@@ -410,17 +442,27 @@ function drawYoY() {
 /* ---------- boot ---------- */
 (async function () {
   try {
-    let text = null, lastErr = null;
-    for (const url of CSV_URLS) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        text = await res.text();
-        break;
-      } catch (e) { lastErr = e; }
+    let all = [];
+    let mainErr = null;
+    for (const s of SOURCES) {
+      let text = null, lastErr = null;
+      for (const url of s.urls) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          text = await res.text();
+          break;
+        } catch (e) { lastErr = e; }
+      }
+      if (text === null) {
+        if (s.key === "main") { mainErr = lastErr || new Error("All endpoints failed"); }
+        else console.warn("Could not load " + s.label + ":", lastErr);
+        continue;
+      }
+      all = all.concat(ingest(text, s.key));
     }
-    if (text === null) throw lastErr || new Error("All endpoints failed");
-    ingest(text);
+    if (mainErr) throw mainErr;
+    rows = all.sort((a, b) => a.date - b.date);
     if (!rows.length) throw new Error("Data loaded but no rows parsed");
     document.getElementById("updated").innerHTML =
       "Latest entry<br><strong>" + fmtDate(rows[rows.length - 1].date) + "</strong>";
