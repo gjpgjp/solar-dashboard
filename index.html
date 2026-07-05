@@ -95,8 +95,6 @@
   .kpi.exp .k-value { color: var(--export); }
   .kpi.imp .k-value { color: var(--import); }
   .kpi.self .k-value { color: #c9b8ff; }
-  .kpi.money-in .k-value { color: var(--export); }
-  .kpi.money-out .k-value { color: var(--import); }
 
   /* ---- charts ---- */
   .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 22px; }
@@ -170,8 +168,6 @@
       <div class="kpi glass exp"><div class="k-label">Exported</div><div class="k-value" id="kExp"></div><div class="k-sub" id="kExpSub"></div></div>
       <div class="kpi glass imp"><div class="k-label">Imported</div><div class="k-value" id="kImp"></div><div class="k-sub" id="kImpSub"></div></div>
       <div class="kpi glass self"><div class="k-label">Self-consumed</div><div class="k-value" id="kSelf"></div><div class="k-sub" id="kSelfSub"></div></div>
-      <div class="kpi glass money-in"><div class="k-label">Export earnings</div><div class="k-value" id="kEarn"></div><div class="k-sub" id="kEarnSub"></div></div>
-      <div class="kpi glass money-out"><div class="k-label">Import cost</div><div class="k-value" id="kCost"></div><div class="k-sub" id="kCostSub"></div></div>
     </div>
 
     <div class="records">
@@ -206,8 +202,6 @@
 <script>
 /* ================= CONFIG — edit these ================= */
 const SHEET_ID = "1cJfgEgDrNxrOpk8IaqocZpz-hOiIjHi7bygnT1arcVQ";
-const IMPORT_RATE = 0.310;  /* £ per kWh you pay for import  */
-const EXPORT_RATE = 0.120;  /* £ per kWh you earn for export */
 /* ======================================================== */
 
 const CSV_URLS = [
@@ -215,7 +209,6 @@ const CSV_URLS = [
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`
 ];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const gbp = v => "£" + v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const kwh = v => v.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 
 let rows = [];          // { date: Date, key: "YYYY-MM-DD", gen, exp, imp }
@@ -303,10 +296,6 @@ function render() {
   setK("kExp", t.exp, "kWh"); setSub("kExpSub", t.gen ? (100 * t.exp / t.gen).toFixed(0) + "% of generation" : "—");
   setK("kImp", t.imp, "kWh"); setSub("kImpSub", (t.imp / days).toFixed(1) + " kWh/day avg");
   setK("kSelf", self, "kWh"); setSub("kSelfSub", t.gen ? (100 * self / t.gen).toFixed(0) + "% of generation" : "—");
-  document.getElementById("kEarn").textContent = gbp(t.exp * EXPORT_RATE);
-  setSub("kEarnSub", "at " + (EXPORT_RATE * 100).toFixed(1) + "p/kWh");
-  document.getElementById("kCost").textContent = gbp(t.imp * IMPORT_RATE);
-  setSub("kCostSub", "at " + (IMPORT_RATE * 100).toFixed(1) + "p/kWh");
 
   setRec(data, "gen", "recGen", "recGenDate");
   setRec(data, "exp", "recExp", "recExpDate");
